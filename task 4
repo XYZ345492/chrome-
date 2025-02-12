@@ -1,0 +1,215 @@
+
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+
+
+interface TimeEntry {
+    id: string;
+    startTime: Date;
+    endTime: Date | null;
+    task: string;
+}
+
+interface TaskSummary {
+    task: string;
+    totalTime: number;
+}
+
+
+const TimeTracker: React.FC = () => {
+    const [timeEntries, setTimeEntries] = useState<TimeEntry[]>(() => {
+        const storedEntries = localStorage.getItem('timeEntries');
+        return storedEntries ? JSON.parse(storedEntries) : [];
+    });
+    const [currentTask, setCurrentTask] = useState<string>('');
+    const [isRunning, setIsRunning] = useState(false);
+    const [startTime, setStartTime] = useState<Date | null>(null);
+    const [elapsedTime, setElapsedTime] = useState(0);
+    const [taskSummaries, setTaskSummaries] = useState<TaskSummary[]>([]);
+
+
+    useEffect(() => {
+        localStorage.setItem('timeEntries', JSON.stringify(timeEntries));
+    }, [timeEntries]);
+
+
+    useEffect(() => {
+        let intervalId: number | null = null;
+        if (isRunning && startTime) {
+            intervalId = setInterval(() => {
+                setElapsedTime(Date.now() - startTime.getTime());
+            }, 1000);
+        } else {
+            setElapsedTime(0);
+        }
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        };
+    }, [isRunning, startTime]);
+
+    useEffect(() => {
+        const calculateSummaries = () => {
+          const summaries: { [task: string]: number } = {};
+          timeEntries.forEach((entry) => {
+            if (entry.endTime) {
+              const duration = entry.endTime.getTime() - entry.startTime.getTime();
+              if (summaries[entry.task]) {
+                summaries[entry.task] += duration;
+              } else {
+                summaries[entry.task] = duration;
+              }
+            }
+          });
+
+          const summaryArray: TaskSummary[] = Object.entries(summaries).map(([task, totalTime]) => ({
+            task,
+            totalTime,
+          }));
+          setTaskSummaries(summaryArray);
+        };
+
+        calculateSummaries();
+    }, [timeEntries])
+
+
+    const handleStart = () => {
+        if (currentTask.trim() === '') {
+            alert("Please enter a task name.");
+            return;
+        }
+
+        setIsRunning(true);
+        const newStartTime = new Date();
+        setStartTime(newStartTime);
+        const newEntry: TimeEntry = {
+            id: String(Date.now()),
+            startTime: newStartTime,
+            endTime: null,
+            task: currentTask,
+        };
+        setTimeEntries([...timeEntries, newEntry]);
+    };
+
+
+    const handleStop = () => {
+        setIsRunning(false);
+        if (startTime) {
+           const updatedTimeEntries = timeEntries.map((entry) => {
+                if (entry.endTime === null) {
+                    return { ...entry, endTime: new Date() };
+                }
+                return entry;
+            });
+            setTimeEntries(updatedTimeEntries);
+           setStartTime(null);
+        }
+    };
+
+
+    const handleTaskChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setCurrentTask(e.target.value);
+    };
+
+
+    const formatTime = (milliseconds: number) => {
+        const totalSeconds = Math.floor(milliseconds / 1000);
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    };
+
+
+    const chartData = taskSummaries.map((summary) => ({
+        name: summary.task,
+        time: summary.totalTime / (1000 * 60),
+    }));
+
+    return (
+        <div className="p-6 bg-gray-100 min-h-screen flex flex-col items-center">
+             <h1 className="text-2xl font-bold mb-4 text-gray-800">Time Tracker</h1>
+
+            <div className="bg-white rounded-xl shadow-md p-6 mb-6 w-full max-w-md">
+                 <input
+                    type="text"
+                    placeholder="Enter task name"
+                    value={currentTask}
+                    onChange={handleTaskChange}
+                    className="border rounded-md px-3 py-2 mb-4 w-full focus:outline-none focus:ring focus:border-blue-300 text-gray-700"
+                />
+                <div className="flex justify-center gap-4">
+                  {!isRunning ? (
+                        <button onClick={handleStart} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md disabled:opacity-50">
+                            Start
+                        </button>
+                    ) : (
+                        <button onClick={handleStop} className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-md disabled:opacity-50">
+                           Stop
+                        </button>
+                    )}
+                </div>
+                {isRunning && <div className="mt-4 text-center text-gray-700 font-medium">
+                        Tracking time: {formatTime(elapsedTime)}
+                    </div>}
+            </div>
+
+           <div className="bg-white rounded-xl shadow-md p-6 mb-6 w-full max-w-md">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800">Time Entries</h2>
+              {timeEntries.length === 0 ? (
+                     <p className="text-gray-500">No time entries yet.</p>
+                 ) : (
+                     <ul className="space-y-2">
+                        {timeEntries.map((entry) => (
+                            <li key={entry.id} className="border-b pb-2 last:border-b-0 text-gray-700">
+                                <span className="font-medium">{entry.task}:</span>
+                                {entry.endTime ? (
+                                    <span> {formatTime(entry.endTime.getTime() - entry.startTime.getTime())}</span>
+                                 ) : (
+                                    <span> Tracking...</span>
+                                )}
+                            </li>
+                        ))}
+                     </ul>
+                 )}
+            </div>
+
+            <div className="bg-white rounded-xl shadow-md p-6 mb-6 w-full max-w-md">
+                 <h2 className="text-xl font-semibold mb-4 text-gray-800">Task Summary</h2>
+                   {taskSummaries.length === 0 ? (
+                      <p className="text-gray-500">No task data available.</p>
+                    ) : (
+                        <ul className="space-y-2">
+                           {taskSummaries.map((summary, index) => (
+                                <li key={index} className="border-b pb-2 last:border-b-0 text-gray-700">
+                                  <span className="font-medium">{summary.task}:</span> {formatTime(summary.totalTime)}
+                                </li>
+                             ))}
+                        </ul>
+                    )}
+           </div>
+
+           <div className="bg-white rounded-xl shadow-md p-6 w-full max-w-md">
+               <h2 className="text-xl font-semibold mb-4 text-gray-800">Time Analysis</h2>
+                {chartData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={chartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" />
+                            <YAxis  label={{ value: 'Minutes', angle: -90, position: 'insideLeft' }}/>
+                            <Tooltip />
+                             <Legend />
+                            <Line type="monotone" dataKey="time" stroke="#8884d8" activeDot={{ r: 8 }} />
+                        </LineChart>
+                     </ResponsiveContainer>
+                    ) : (
+                        <p className="text-gray-500">No chart data available</p>
+                    )}
+            </div>
+        </div>
+    );
+};
+
+export default TimeTracker;
